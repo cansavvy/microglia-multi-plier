@@ -1,0 +1,134 @@
+---
+title: "UMAP Visualization"
+author: "ALSF CCDL - Candace Savonen"
+output:   
+  html_notebook: 
+    toc: true
+    toc_float: true
+---
+
+*Purpose*: 
+
+Recommended articles on UMAP:   
+- [How UMAP works with visuals](https://umap-learn.readthedocs.io/en/latest/how_umap_works.html)  
+- [Original paper on UMAP](https://arxiv.org/abs/1802.03426) by McGinnes, Healy & Melville.  
+
+## 1) Set up
+Install [`umap` R package](https://cran.r-project.org/web/packages/umap/vignettes/umap.html) 
+if you have not installed it previously. 
+
+```{r}
+# Install umap if it isn't in the list of installed packages
+if (!("umap" %in% installed.packages())) {
+  install.packages("umap")
+}
+```
+
+```{r}
+# Set seed
+set.seed(12345)
+
+# Magrittr pipe
+`%>%` <- dplyr::`%>%`
+
+# Load ggplot2 for graphing
+library(ggplot2)
+```
+
+Set up output directories.
+
+```{r}
+# Make a results directory if it isn't created yet
+if (!dir.exists("results")) {
+  dir.create("results")
+}
+# Make a plots directory if it isn't created yet
+if (!dir.exists("plots")) {
+  dir.create("plots")
+}
+```
+
+```{r}
+# Metadata file name
+metadata_filename <- file.path("data", "HOMO_SAPIENS", "metadata_HOMO_SAPIENS.tsv")
+
+# Data file name
+data_filename <- file.path("data", "HOMO_SAPIENS", "HOMO_SAPIENS.tsv")
+```
+
+## Import and set up data.
+Data downloaded from refine.bio are in tab separated values ("tsv") files and 
+include a metadata in a separate tsv file. 
+These data set was obtained from [refine.bio](https://www.refine.bio/). 
+
+```{r}
+# Read in data tsv file
+exprs_df <- readr::read_tsv(data_filename, progress = FALSE) %>% 
+  # Make the gene column the rownames so the gene names are out of the way for calculations
+  tibble::column_to_rownames('Gene') 
+
+# Print out data
+exprs_df
+```
+
+Import the metadata for this dataset
+
+```{r}
+# Read in metadata tsv file
+metadata <- readr::read_tsv(metadata_filename) %>% 
+  # Get rid of columns that have only NAs
+  dplyr::select(-which(apply(is.na(.), 2, all)))
+
+# Print out metadata so we can get an idea of what we have
+metadata
+```
+
+## Perform Uniform Manifold Approximation.
+
+```{r}
+# Calculate umap
+umap_dat <- umap::umap(t(exprs_df))
+
+# Make into dataframe 
+umap_df <- data.frame(umap_dat$layout) %>% 
+  # Turn samples_ids stored as rownames into column
+  tibble::rownames_to_column("refinebio_accession_code") %>%
+  # Bring the metadata into this df; match by sample ids
+  dplyr::inner_join(metadata, 
+                    by = 'refinebio_accession_code')
+```
+
+Plot the UMAP coordinates.
+Label the data points based on their subgroup.
+
+```{r}
+# Make a scatterplot with ggplot2
+umap_plot <- ggplot(umap_df, aes(x = X1, y = X2, 
+                                 shape = experiment_accession)) +
+  geom_point() + 
+  theme_classic()
+
+# Print out plot here
+umap_plot
+```
+
+## Save plot to png.
+
+```{r}
+# Save as a png
+ggsave(file.path("plots", "umap_scatterplot.png"))
+```
+
+## 5) Save UMAP coordinates to tsv file.
+
+```{r}
+umap_df %>% as.data.frame() %>% 
+  readr::write_tsv(file.path("results", "umap_scores.tsv"))
+```
+
+Session info: 
+
+```{r}
+# Print session info 
+sessionInfo()
+```
