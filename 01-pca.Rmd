@@ -1,5 +1,5 @@
 ---
-title: "UMAP Visualization"
+title: "PCA Visualization"
 author: "ALSF CCDL - Candace Savonen"
 output:   
   html_notebook: 
@@ -9,20 +9,7 @@ output:
 
 *Purpose*: 
 
-Recommended articles on UMAP:   
-- [How UMAP works with visuals](https://umap-learn.readthedocs.io/en/latest/how_umap_works.html)  
-- [Original paper on UMAP](https://arxiv.org/abs/1802.03426) by McGinnes, Healy & Melville.  
-
-## 1) Set up
-Install [`umap` R package](https://cran.r-project.org/web/packages/umap/vignettes/umap.html) 
-if you have not installed it previously. 
-
-```{r}
-# Install umap if it isn't in the list of installed packages
-if (!("umap" %in% installed.packages())) {
-  install.packages("umap")
-}
-```
+## Set up
 
 ```{r}
 # Set seed
@@ -57,6 +44,7 @@ data_filename <- file.path("data", "HOMO_SAPIENS", "HOMO_SAPIENS.tsv")
 ```
 
 ## Import and set up data.
+
 Data downloaded from refine.bio are in tab separated values ("tsv") files and 
 include a metadata in a separate tsv file. 
 These data set was obtained from [refine.bio](https://www.refine.bio/). 
@@ -83,14 +71,14 @@ metadata <- readr::read_tsv(metadata_filename) %>%
 metadata
 ```
 
-## Perform Uniform Manifold Approximation.
+## Perform PCA.
 
 ```{r}
-# Calculate umap
-umap_dat <- umap::umap(t(exprs_df))
+# Calculate pca
+pca_dat <- prcomp(t(exprs_df))
 
 # Make into dataframe 
-umap_df <- data.frame(umap_dat$layout) %>% 
+pca_df <- data.frame(pca_dat$x) %>% 
   # Turn samples_ids stored as rownames into column
   tibble::rownames_to_column("refinebio_accession_code") %>%
   # Bring the metadata into this df; match by sample ids
@@ -98,32 +86,32 @@ umap_df <- data.frame(umap_dat$layout) %>%
                     by = 'refinebio_accession_code')
 ```
 
-Plot the UMAP coordinates.
+Plot the pca coordinates.
 Label the data points based on their subgroup.
 
 ```{r}
 # Make a scatterplot with ggplot2
-umap_plot <- ggplot(umap_df, aes(x = X1, y = X2, 
-                                 shape = experiment_accession)) +
+pca_plot <- ggplot(pca_df, aes(x = PC1, y = PC2, 
+                               shape = experiment_accession)) +
   geom_point() + 
   theme_classic()
 
 # Print out plot here
-umap_plot
+pca_plot
 ```
 
 ## Save plot to png.
 
 ```{r}
 # Save as a png
-ggsave(file.path("plots", "umap_scatterplot.png"))
+ggsave(file.path("plots", "pca_scatterplot.png"))
 ```
 
-## 5) Save UMAP coordinates to tsv file.
+## Save PCA scores to tsv file.
 
 ```{r}
-umap_df %>% as.data.frame() %>% 
-  readr::write_tsv(file.path("results", "umap_scores.tsv"))
+pca_df %>% as.data.frame() %>% 
+  readr::write_tsv(file.path("results", "pca_scores.tsv"))
 ```
 
 Session info: 

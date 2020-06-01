@@ -1,0 +1,146 @@
+---
+title: "Applying MultiPLIER"
+output:   
+  html_notebook: 
+    toc: true
+    toc_float: true
+---
+
+**C. Savonen 2020, based on J. Taroni's notebook:**
+
+In this notebook we'll prep expression data and apply MultiPLIER/recount2 model.
+
+It has been processed with `SCAN::SCANfast` through 
+[refine.bio](https://www.refine.bio/).
+
+## Set up
+
+Set up functions we need. 
+
+```{r}
+# magrittr pipe
+`%>%` <- dplyr::`%>%`
+
+# need PrepExpressionDF
+source(file.path("util", "test_LV_differences.R"))
+
+# need GetNewDataB
+source(file.path("util", "plier_util.R"))
+```
+
+```{r}
+# we need this library to convert from Ensembl gene identifiers to gene symbols
+# for use with PLIER
+library(org.Hs.eg.db)
+```
+
+Function for working with refine.bio-processed data (e.g., uses Ensembl
+gene identifiers that must be converted to gene symbols).
+
+```{r}
+expression_prep <- function(exprs_df) {
+  
+  # mapIds default behavior -- select whatever it finds first in the case of
+  # 1:many mappings
+  gene_symbols_df <- 
+    AnnotationDbi::mapIds(org.Hs.eg.db, keys = exprs_df$Gene, 
+                          column = "SYMBOL", keytype = "ENSEMBL") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Ensembl")
+  colnames(gene_symbols_df)[2] <- "Symbol"
+  
+  # tack on the gene symbols
+  annot_exprs_df <- gene_symbols_df %>%
+    dplyr::inner_join(exprs_df, by = c("Ensembl" = "Gene")) %>%
+    dplyr::select(-Ensembl)
+  colnames(annot_exprs_df)[1] <- "Gene"
+  
+  # if there are any duplicate gene symbols, use PrepExpressionDF
+  if (any(duplicated(annot_exprs_df$Gene))) {
+    agg_exprs_df <- PrepExpressionDF(exprs = annot_exprs_df) %>%
+      dplyr::filter(!is.na(Gene))
+  } else {
+    return(annot_exprs_df %>% dplyr::filter(!is.na(Gene)))
+  }
+  
+}
+```
+
+#### Directory setup
+
+```{r}
+# directory that holds all the gene expression matrices
+exprs_dir <- file.path("data", "expression_data", "by_experiment")
+plot_dir <- "plots"
+results_dir <- "results"
+
+# Create output folders
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+## Read in data
+
+### Expression data
+
+GSE28642
+
+```{r}
+exprs_file <- file.path(exprs_dir, "GSE28642", "GSE28642.tsv")
+exprs_df <- readr::read_tsv(exprs_file)
+```
+
+### PLIER model
+
+```{r}
+recount_file <- file.path("data", "recount2_PLIER_data", 
+                          "recount_PLIER_model.RDS")
+recount_plier <- readr::read_rds(recount_file)
+```
+
+## Gene identifier conversion and aggregation
+
+We're going to use the default behavior of `mapIds` in
+`expression_prep`, i.e., if there are 1:many mappings, just return the first.
+
+### GSE28642
+
+```{r}
+prepped_df <- expression_prep(exprs_df)
+```
+
+## MultiPLIER
+
+Once the data have been prepped, apply MulitPLIER model. 
+We'll use the short wrapper function below since we have to do this twice.
+It is only intended to be used in this environment (e.g., `recount.plier` is
+in the global environment) which is why we've placed it here.
+
+```{r}
+MultiPLIER <- function(agg_exprs_df, output_file) {
+  
+  # need a matrix where the gene symbols are row names
+  exprs_mat <- agg_exprs_df %>%
+    tibble::column_to_rownames("Gene") %>%
+    as.matrix()
+  
+  # apply the MultPLIER model
+  b_matrix <- GetNewDataB(exprs.mat = exprs_mat,
+                          plier.model = recount_plier)
+  
+  # save to file!
+  saveRDS(b_matrix, output_file)
+}
+```
+
+
+```{r}
+MultiPLIER(agg_exprs_df = prepped_df,
+           output_file = file.path(results_dir, 
+                                  "GSE28642_recount2_B.RDS"))
+```
+
+### Session Info
+```{r}
+sessionInfo()
+```
